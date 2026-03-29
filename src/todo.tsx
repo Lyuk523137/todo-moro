@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
     useGetTasksQuery,
     useAddTaskMutation,
     useDeleteTaskMutation,
     useCompleteTaskMutation,
     useIncompleteTaskMutation,
+    useUpdateTaskMutation,
 } from './services/tasksAPI'
 
 interface Task {
@@ -20,6 +21,9 @@ type Filter = 'all' | 'active' | 'completed'
 function TodoList() {
     const [newTask, setNewTask] = useState('')
     const [filter, setFilter] = useState<Filter>('all')
+    const [editingId, setEditingId] = useState<string | null>(null)
+    const [editingText, setEditingText] = useState('')
+    const editInputRef = useRef<HTMLInputElement>(null)
 
     const { data: tasks = [] as Task[], isLoading, isError } = useGetTasksQuery(undefined)
 
@@ -27,6 +31,11 @@ function TodoList() {
     const [deleteTask] = useDeleteTaskMutation()
     const [completeTask] = useCompleteTaskMutation()
     const [incompleteTask] = useIncompleteTaskMutation()
+    const [updateTask] = useUpdateTaskMutation()
+
+    useEffect(() => {
+        if (editingId) editInputRef.current?.focus()
+    }, [editingId])
 
     function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
         setNewTask(event.target.value)
@@ -48,6 +57,27 @@ function TodoList() {
         } else {
             await completeTask(id)
         }
+    }
+
+    function startEditing(task: Task) {
+        setEditingId(task.id)
+        setEditingText(task.text)
+    }
+
+    async function commitEdit() {
+        if (!editingId) return
+        const trimmed = editingText.trim()
+        if (trimmed) await updateTask({ id: editingId, text: trimmed })
+        setEditingId(null)
+    }
+
+    function cancelEdit() {
+        setEditingId(null)
+    }
+
+    function handleEditKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+        if (event.key === 'Enter') commitEdit()
+        if (event.key === 'Escape') cancelEdit()
     }
 
     const done = tasks.filter((t: Task) => t.completed).length
@@ -153,26 +183,41 @@ function TodoList() {
                                     )}
                                 </button>
 
-                                {/* Task text */}
-                                <span
-                                    className={`flex-1 text-sm text-left transition-all duration-200 ${
-                                        task.completed ? 'line-through text-slate-400' : 'text-slate-700'
-                                    }`}
-                                >
-                                    {task.text}
-                                </span>
+                                {/* Task text / inline edit */}
+                                {editingId === task.id ? (
+                                    <input
+                                        ref={editInputRef}
+                                        className="flex-1 text-sm text-left bg-slate-50 border border-indigo-300 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-100 transition"
+                                        value={editingText}
+                                        onChange={(e) => setEditingText(e.target.value)}
+                                        onKeyDown={handleEditKeyDown}
+                                        onBlur={commitEdit}
+                                    />
+                                ) : (
+                                    <span
+                                        className={`flex-1 text-sm text-left transition-all duration-200 cursor-text ${
+                                            task.completed ? 'line-through text-slate-400' : 'text-slate-700'
+                                        }`}
+                                        onDoubleClick={() => !task.completed && startEditing(task)}
+                                        title={task.completed ? '' : 'Double-click to edit'}
+                                    >
+                                        {task.text}
+                                    </span>
+                                )}
 
                                 {/* Delete button — visible on hover */}
-                                <button
-                                    type="button"
-                                    onClick={() => deleteTask(task.id)}
-                                    className="opacity-0 group-hover:opacity-100 flex-shrink-0 w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 flex items-center justify-center transition-all duration-150 cursor-pointer"
-                                    title="Delete task"
-                                >
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
+                                {editingId !== task.id && (
+                                    <button
+                                        type="button"
+                                        onClick={() => deleteTask(task.id)}
+                                        className="opacity-0 group-hover:opacity-100 flex-shrink-0 w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 flex items-center justify-center transition-all duration-150 cursor-pointer"
+                                        title="Delete task"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                )}
                             </li>
                         ))}
                     </ul>
